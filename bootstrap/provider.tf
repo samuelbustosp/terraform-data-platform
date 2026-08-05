@@ -3,8 +3,8 @@ terraform {
 
   required_providers {
     aws = {
-      source = "hashicorp/aws"
-      version = "~> 6.0"
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
     }
   }
 }
@@ -12,10 +12,9 @@ terraform {
 provider "aws" {
   region = var.region
 
-  default_tags{
+  default_tags {
     tags = {
-      Project     = var.project_name
-      Enviroment  = var.environment
+      Project = var.project_name
     }
   }
 }

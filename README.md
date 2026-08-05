@@ -1,62 +1,131 @@
 # Terraform Data Platform
 
 ## Description
+Este proyecto implementa la infraestructura base de una plataforma de datos en AWS utilizando Terraform y una arquitectura modular.
 
-This project contains the initial Terraform scaffolding for a cloud-based data platform. The goal is to provide a clean and maintainable structure that can later be extended with services such as Amazon Kinesis, Amazon Managed Service for Apache Flink, S3, IAM and CloudWatch.
+La solución incluye componentes de red, gestión de identidades (IAM), almacenamiento en Amazon S3 y un backend remoto para almacenar el estado de Terraform.
+
+---
 
 ## Project Structure
+```
+terraform-data-platform/
+│
+├── bootstrap/
+│   ├── main.tf
+│   ├── provider.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   └── terraform.tfvars
+│
+├── modules/
+│   ├── network/
+│   └── identity/
+│
+└── environments/
+    └── dev/
+        ├── backend.tf
+        ├── main.tf
+        ├── provider.tf
+        ├── variables.tf
+        ├── outputs.tf
+        └── terraform.tfvars
+```
 
-- provider.tf: Terraform and AWS provider configuration.
-- variables.tf: Input variables used across the project.
-- main.tf: Main infrastructure resources.
-- outputs.tf: Output values.
-- terraform.tfvars: Example variable values.
-- .gitignore: Excludes Terraform generated files.
-
-## Getting Started
-
-Initialize Terraform:
+---
+## Prerequisites
+- Terraform >= 1.0
+- AWS CLI
+- Cuenta de AWS
+- Credenciales configuradas mediante:
 
 ```bash
+aws configure
+```
+
+---
+
+## Bootstrap
+
+El directorio `bootstrap` crea los recursos necesarios para almacenar el estado remoto de Terraform.
+
+Recursos creados:
+
+- Bucket S3 para el archivo `.tfstate`
+- Tabla DynamoDB para el bloqueo del estado (State Lock)
+
+Ejecutar:
+
+```bash
+cd bootstrap
+
 terraform init
-```
-
-Validate the configuration:
-
-```bash
-terraform validate
-```
-
-Generate an execution plan:
-
-```bash
 terraform plan
+terraform apply
 ```
 
-## AWS Naming Convention
+---
 
-AWS resources follow the convention:
+## Development Environment
 
+Una vez creado el backend remoto, desplegar la infraestructura principal.
+
+```bash
+cd environments/dev
+
+terraform init -reconfigure
+terraform plan
+terraform apply
 ```
-<project-name>-<environment>-<resource>
+
+---
+
+## Resources Created
+
+### Network
+
+- VPC
+- 2 Private Subnets
+- Private Route Table
+- Route Table Associations
+- S3 Gateway Endpoint
+
+### Storage
+
+- Data Lake Bucket (Amazon S3)
+
+### Identity
+
+- IAM Role para procesamiento de datos
+- IAM Policy para acceso de lectura/escritura al Data Lake
+- IAM Role para auditoría
+- IAM Policy de solo lectura
+
+### Backend
+
+- Remote State en Amazon S3
+- State Lock mediante DynamoDB
+
+---
+
+## Useful Commands
+
+```bash
+terraform fmt -recursive
+terraform validate
+terraform plan
+terraform apply
+terraform destroy
 ```
 
-Example:
+---
 
-```
-data-platform-dev-data-lake
-```
+## Outputs
 
-This convention makes resources easier to identify and organize across different environments.
+El proyecto expone los siguientes outputs:
 
-## Why separate the files?
-
-Splitting the configuration into multiple files improves readability and maintainability.
-
-- provider.tf isolates provider configuration.
-- variables.tf centralizes input variables.
-- main.tf contains infrastructure resources.
-- outputs.tf exposes useful values.
-- terraform.tfvars stores environment-specific values.
-
-This structure scales much better than placing everything inside a single main.tf file.
+- bucket_name
+- data_processing_role_arn
+- audit_role_arn
+- vpc_id
+- private_subnet_ids
