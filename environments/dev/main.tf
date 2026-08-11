@@ -35,3 +35,19 @@ module "identity" {
 
   data_bucket_arn = aws_s3_bucket.data_lake_raw.arn
 }
+
+module "kinesis" {
+  source = "../../modules/kinesis"
+
+  project_name = var.project_name
+  environment  = var.environment
+
+  stream_name = "${var.project_name}-${var.environment}-stream"
+
+  shard_count = 2
+
+  bucket_name = aws_s3_bucket.data_lake_raw.bucket
+
+  buffer_size_mb      = 5
+  buffer_interval_sec = 60
+}

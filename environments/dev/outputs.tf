@@ -28,3 +28,23 @@ output "private_subnets_id" {
 
   value = module.network.private_subnet_ids
 }
+
+output "stream_name" {
+  description = "Name of the Kinesis Data Stream"
+  value       = module.kinesis.stream_name
+}
+
+output "stream_arn" {
+  description = "ARN of the Kinesis Data Stream"
+  value       = module.kinesis.stream_arn
+}
+
+output "firehose_name" {
+  description = "Name of the Kinesis Data Firehose"
+  value       = module.kinesis.firehose_name
+}
+
+output "firehose_arn" {
+  description = "ARN of the Kinesis Data Firehose"
+  value       = module.kinesis.firehose_arn
+}
