@@ -65,8 +65,8 @@ resource "aws_iam_role_policy" "firehouse" {
           "s3:ListMultipartUploadParts"
         ]
         Resource = [
-          "arn:aws:s3::::${var.bucket_name}",
-          "arn:aws:s3::::${var.bucket_name}/*"
+          "arn:aws:s3:::${var.bucket_name}",
+          "arn:aws:s3:::${var.bucket_name}/*"
         ]
       },
       {
@@ -93,10 +93,10 @@ resource "aws_kinesis_firehose_delivery_stream" "main" {
 
   extended_s3_configuration {
     role_arn   = aws_iam_role.firehose.arn
-    bucket_arn = "arn:aws:s3::::${var.bucket_name}"
+    bucket_arn = "arn:aws:s3:::${var.bucket_name}"
 
     prefix              = "ingesta/year=!{timestamp:yyyy}/"
-    error_output_prefix = "ingesta-errores/year=!{timestamp:yyyy}/"
+    error_output_prefix = "ingesta-errores/!{firehose:error-output-type}/year=!{timestamp:yyyy}/"
 
     buffering_size     = var.buffer_size_mb
     buffering_interval = var.buffer_interval_sec
