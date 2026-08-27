@@ -33,3 +33,18 @@ Thumbs.db
 
 # Lock file (normalmente SÍ se versiona)
 # .terraform.lock.hcl
+
+# Java & Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+.mvn/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+env/
+venv/

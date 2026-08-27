@@ -51,3 +51,15 @@ module "kinesis" {
   buffer_size_mb      = 5
   buffer_interval_sec = 60
 }
+
+module "flink" {
+  source = "../../modules/flink"
+
+  project_name = var.project_name
+  environment  = var.environment
+
+  stream_arn  = module.kinesis.stream_arn
+  bucket_name = aws_s3_bucket.data_lake_raw.bucket
+
+  jar_key = "flink/urban-sensors-flink.jar"
+}
