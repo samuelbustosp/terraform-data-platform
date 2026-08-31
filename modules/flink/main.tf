@@ -1,4 +1,5 @@
-
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 resource "aws_iam_role" "flink" {
   name = "${var.project_name}-${var.environment}-flink-role"
@@ -79,6 +80,38 @@ resource "aws_iam_role_policy" "flink_s3" {
         ]
 
         Resource = "arn:aws:s3:::${var.bucket_name}/*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "flink_glue" {
+  name = "${var.project_name}-${var.environment}-flink-glue-policy"
+  role = aws_iam_role.flink.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "glue:GetDatabase",
+          "glue:GetTable",
+          "glue:GetTables",
+          "glue:CreateTable",
+          "glue:UpdateTable",
+          "glue:DeleteTable",
+          "glue:GetPartition",
+          "glue:GetPartitions",
+          "glue:CreatePartition",
+          "glue:BatchCreatePartition"
+        ]
+        Resource = [
+          "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:database/default",
+          "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:database/lakehouse_db",
+          "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/lakehouse_db/*"
+        ]
       }
     ]
   })
