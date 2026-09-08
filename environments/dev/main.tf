@@ -64,3 +64,21 @@ resource "aws_glue_catalog_database" "lakehouse_db" {
   name        = "lakehouse_db"
   description = "Base de datos para las tablas de Iceberg"
 }
+
+module "redshift" {
+  source = "../../modules/redshift"
+
+  project_name = var.project_name
+  environment  = var.environment
+
+  vpc_id             = module.network.vpc_id
+  vpc_cidr           = var.vpc_cidr
+  subnet_ids         = module.network.private_subnet_ids
+  kinesis_stream_arn = module.kinesis.stream_arn
+  data_bucket_arn    = module.storage.bucket_arn
+  glue_database_name = aws_glue_catalog_database.lakehouse_db.name
+
+  database_name  = "analytics_db"
+  admin_username = "adminuser"
+  admin_password = var.redshift_admin_password
+}

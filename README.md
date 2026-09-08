@@ -1,10 +1,10 @@
-# Terraform Data Platform - Lakehouse con Apache Iceberg & AWS Glue
+# Terraform Data Platform - Lakehouse con Apache Iceberg, AWS Glue & Amazon Redshift
 
 ## Descripción
 
 Este proyecto implementa la infraestructura completa de una plataforma de datos moderna (**Lakehouse**) en AWS utilizando **Terraform** bajo una arquitectura modular, orientada a streaming en tiempo real y gobernanza centralizada.
 
-La solución abarca desde la ingesta continua de eventos de telemetría de sensores urbanos hasta el procesamiento stateful en streaming con **Apache Flink** y su persistencia transaccional en formato de tablas abiertas **Apache Iceberg**, registradas y gobernadas centralmente en **AWS Glue Data Catalog** y consultables directamente mediante **Amazon Athena**.
+La solución abarca desde la ingesta continua de eventos de telemetría de sensores urbanos hasta el procesamiento stateful en streaming con **Apache Flink**, la persistencia transaccional en formato de tablas abiertas **Apache Iceberg** (gobernadas en **AWS Glue Data Catalog**) y la analítica avanzada in-stream de ultra-baja latencia con **Amazon Redshift Streaming Ingestion (RSI)** y **Materialized Views**, permitiendo consultas federadas híbridas que unifican datos en tiempo real con históricos.
 
 ### Componentes Principales
 
@@ -14,8 +14,10 @@ La solución abarca desde la ingesta continua de eventos de telemetría de senso
 * **Ingesta Real-Time:** Amazon Kinesis Data Streams (2 shards provisionados, cifrado KMS) y Kinesis Data Firehose (`modules/kinesis`).
 * **Procesamiento Streaming:** AWS Managed Service for Apache Flink (Flink 1.20) con ventanas Tumbling y agregación stateful (`modules/flink`).
 * **Capa Lakehouse (Persistencia Transaccional):** Apache Iceberg Sink integrado con AWS Glue Data Catalog y almacenamiento en Amazon S3.
-* **Motor Analítico Serverless:** Amazon Athena para consultas SQL de alto rendimiento sobre las tablas Iceberg con *Partition Pruning*.
-* **Observabilidad:** Amazon CloudWatch Logs y CloudWatch Alarms.
+* **Analítica In-Stream de Baja Latencia:** Amazon Redshift (nodo `ra3.large`) con Streaming Ingestion directa sobre Kinesis y Materialized Views (`modules/redshift`).
+* **Consultas Federadas Híbridas:** Redshift Spectrum sobre AWS Glue Data Catalog para cruce analítico entre eventos en caliente y tablas históricas Iceberg.
+* **Motor Analítico Serverless:** Amazon Athena para consultas ad-hoc directas sobre tablas Iceberg.
+* **Observabilidad:** Amazon CloudWatch Logs, CloudWatch Alarms y vistas de sistema de Redshift (`SYS_STREAM_SCAN_STATES`, `SVV_MV_INFO`).
 * **Infraestructura como Código (IaC):** 100% automatizado con Terraform.
 
 ---
@@ -23,51 +25,44 @@ La solución abarca desde la ingesta continua de eventos de telemetría de senso
 ## Arquitectura
 
 ```text
-                  ┌─────────────────────────────────┐
-                  │         Python Producer         │
-                  │        (sensor_producer)        │
-                  └────────────────┬────────────────┘
-                                   │
-                                   │ PutRecord (JSON Telemetría)
-                                   ▼
-                  ┌─────────────────────────────────┐
-                  │       Kinesis Data Stream       │
-                  │      (pre-entrega1-dev-stream)  │
-                  │       2 Shards / KMS Encrypted  │
-                  └────────┬───────────────┬────────┘
-                           │               │
-             ┌─────────────┘               └─────────────┐
-             │                                           │
-             ▼                                           ▼
-  ┌─────────────────────┐                     ┌─────────────────────┐
-  │ Kinesis Data        │                     │ Managed Service for │
-  │     Firehose        │                     │   Apache Flink      │
-  │                     │                     │   (Flink 1.20)      │
-  │ Buffer: 5 MB / 60s  │                     │                     │
-  │ Compresión GZIP     │                     │ Ventana Tumbling 1m │
-  └──────────┬──────────┘                     │ Stateful Aggregation│
-             │                                └──────────┬──────────┘
-             ▼                                           │
-  ┌─────────────────────┐                                │ Iceberg Sink (2PC)
-  │      Amazon S3      │                                │ Checkpoints 60s
-  │     (Zona RAW)      │                                ▼
-  │   /ingesta/year=... │                     ┌─────────────────────┐
-  └─────────────────────┘                     │    AWS Glue Data    │
-                                              │       Catalog       │
-                                              │  (lakehouse_db)     │
-                                              │  sensor_aggregates  │
-                                              └──────────┬──────────┘
-                                                         │
-                                   ┌─────────────────────┴─────────────────────┐
-                                   │                                           │
-                                   ▼                                           ▼
-                        ┌─────────────────────┐                     ┌─────────────────────┐
-                        │      Amazon S3      │                     │    Amazon Athena    │
-                        │ (Lakehouse Storage) │                     │   (SQL Analytics)   │
-                        │ /lakehouse/data/    │                     │                     │
-                        │ /lakehouse/metadata/│◀────────────────────│ SELECT * FROM       │
-                        │ Parquet + Snapshots │                     │ sensor_aggregates   │
-                        └─────────────────────┘                     └─────────────────────┘
+                        ┌────────────────────────────────────┐
+                        │      Python Producer (Telemetría)  │
+                        │       (scripts/sensor_producer.py) │
+                        └─────────────────┬──────────────────┘
+                                          │ PutRecord (JSON)
+                                          ▼
+                        ┌────────────────────────────────────┐
+                        │        Amazon Kinesis Stream       │
+                        │      (pre-entrega1-dev-stream)     │
+                        │      2 Shards / Cifrado KMS        │
+                        └─────────┬────────────────┬─────────┘
+                                  │                │
+            ┌─────────────────────┘                └────────────────────────┐
+            │                                                               │ Redshift Streaming Ingestion
+            ▼                                                               │ (Direct Shard Scan)
+ ┌──────────────────────┐                                                   ▼
+ │ Managed Service for  │                                        ┌────────────────────────────┐
+ │     Apache Flink     │                                        │       Amazon Redshift      │
+ │   (Flink 1.20 Job)   │                                        │      (Clúster RA3.large)   │
+ └──────────┬───────────┘                                        └──────────────┬─────────────┘
+            │ Iceberg Sink (2PC)                                                │
+            ▼                                                                   │
+ ┌──────────────────────┐                                                       │
+ │  AWS Glue Catalog    │◀──────────────────────────────────────────────────────┤ External Schema (Iceberg)
+ │    (lakehouse_db)    │                  Redshift Spectrum                    │ lakehouse_catalog
+ │   sensor_aggregates  │                                                       │
+ └──────────┬───────────┘                                                       ▼
+            │                                                    ┌────────────────────────────┐
+            ▼                                                    │     Materialized View      │
+ ┌──────────────────────┐                                        │ mv_sensor_telemetry_stream │
+ │      Amazon S3       │                                        │ (JSON Parse + Typings)     │
+ │  (Lakehouse Storage) │                                        └──────────────┬─────────────┘
+ │ Parquet + Metadatos  │                                                       │
+ └──────────────────────┘                                                       ▼
+                                                                 ┌────────────────────────────┐
+                                                                 │      CONSULTA FEDERADA     │
+                                                                 │  JOIN: Stream + Iceberg    │
+                                                                 └────────────────────────────┘
 ```
 
 ---
@@ -109,14 +104,21 @@ terraform-data-platform/
 │   │   ├── cloudwatch.tf
 │   │   ├── variables.tf
 │   │   └── outputs.tf
-│   └── flink/                        <-- Managed Flink con outputs completos y permisos Glue
+│   ├── flink/                        <-- Managed Flink con outputs completos y permisos Glue
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   └── redshift/                     <-- Clúster RA3.large, roles IAM Kinesis/Glue, Subnet Group y SG
 │       ├── main.tf
 │       ├── variables.tf
 │       └── outputs.tf
 │
 ├── scripts/
 │   ├── producer.py
-│   └── sensor_producer.py
+│   ├── sensor_producer.py
+│   └── redshift_streaming_ingestion.sql  <-- Script SQL consolidado de Ingesta, MV, JOIN y RBAC
+│
+├── CheckPoint_Redshift_Bustos_Samuel.md  <-- Documento técnico para exportar a PDF (Pre-entrega 6)
 │
 └── environments/
     └── dev/
@@ -421,13 +423,104 @@ lakehouse/lakehouse_db.db/sensor_aggregates/metadata/snap-...avro
 
 ---
 
+## Capa Analítica Avanzada In-Stream: Amazon Redshift (Pre-entrega 6)
+
+En esta fase se incorporó **Amazon Redshift** como motor analítico de baja latencia acoplado de forma nativa tanto a **Amazon Kinesis Data Streams** (Hot Path) como a **AWS Glue Data Catalog / Apache Iceberg** (Cold/Warm Path).
+
+### 1. Infraestructura de Redshift en Terraform (`modules/redshift`)
+
+* **Clúster Provisionado:** Nodo de cómputo `ra3.large` de nodo único (*single-node*) en subredes privadas.
+* **Redshift Streaming Ingestion (RSI):** Conexión directa a nivel de shard con Kinesis Data Streams (`pre-entrega1-dev-stream`) para procesamiento sin staging en S3.
+* **Seguridad IAM:** Rol `pre-entrega1-dev-redshift-role` con permisos granulares para Kinesis (`DescribeStreamSummary`, `GetShardIterator`, `GetRecords`, `DescribeStream`, `ListShards`), Glue Catalog (`lakehouse_db`) y S3 (`GetObject`, `ListBucket`).
+
+### 2. Definición de Ingesta y Materialized View (`scripts/redshift_streaming_ingestion.sql`)
+
+```sql
+-- 1. Esquema externo sobre Kinesis
+CREATE EXTERNAL SCHEMA IF NOT EXISTS kinesis_stream_schema
+FROM KINESIS
+IAM_ROLE 'arn:aws:iam::985879611495:role/pre-entrega1-dev-redshift-role';
+
+-- 2. Materialized View con modelado JSON, tipado estricto y protección contra Schema Drift
+CREATE MATERIALIZED VIEW mv_sensor_telemetry_stream
+AS
+SELECT
+    approximate_arrival_timestamp,
+    partition_key,
+    shard_id,
+    sequence_number,
+    JSON_EXTRACT_PATH_TEXT(FROM_VARBYTE(kinesis_data, 'utf-8'), 'sensor_id')::VARCHAR(50) AS sensor_id,
+    JSON_EXTRACT_PATH_TEXT(FROM_VARBYTE(kinesis_data, 'utf-8'), 'timestamp')::VARCHAR(30) AS event_timestamp,
+    JSON_EXTRACT_PATH_TEXT(FROM_VARBYTE(kinesis_data, 'utf-8'), 'temperature')::FLOAT8   AS temperature,
+    JSON_EXTRACT_PATH_TEXT(FROM_VARBYTE(kinesis_data, 'utf-8'), 'humidity')::FLOAT8      AS humidity,
+    JSON_EXTRACT_PATH_TEXT(FROM_VARBYTE(kinesis_data, 'utf-8'), 'air_quality_index')::INT AS air_quality_index,
+    JSON_PARSE(FROM_VARBYTE(kinesis_data, 'utf-8')) AS raw_payload
+FROM kinesis_stream_schema."pre-entrega1-dev-stream"
+WHERE CAN_JSON_PARSE(FROM_VARBYTE(kinesis_data, 'utf-8'));
+```
+
+### 3. Integración Lakehouse y Consulta Federada Híbrida
+
+Se mapea la base de datos `lakehouse_db` de Glue como esquema externo de Redshift Spectrum y se ejecuta un `JOIN` que cruza los datos en tiempo real de la Materialized View con los agregados históricos de la tabla Apache Iceberg:
+
+```sql
+-- Esquema externo hacia Glue Data Catalog
+CREATE EXTERNAL SCHEMA IF NOT EXISTS lakehouse_catalog
+FROM DATA CATALOG
+DATABASE 'lakehouse_db'
+IAM_ROLE 'arn:aws:iam::985879611495:role/pre-entrega1-dev-redshift-role'
+REGION 'us-east-1';
+
+-- Consulta Híbrida: Telemetría en caliente vs. Promedios históricos
+SELECT
+    s.sensor_id,
+    s.event_timestamp                                              AS real_time_timestamp,
+    s.temperature                                                  AS real_time_temperature,
+    h.avg_temperature                                              AS historical_avg_temp,
+    ROUND((s.temperature - h.avg_temperature)::NUMERIC, 2)        AS temp_deviation,
+    s.air_quality_index                                            AS real_time_aqi,
+    h.avg_air_quality                                              AS historical_avg_aqi,
+    ROUND((s.air_quality_index - h.avg_air_quality)::NUMERIC, 2)   AS aqi_deviation
+FROM mv_sensor_telemetry_stream s
+INNER JOIN lakehouse_catalog.sensor_aggregates h
+    ON s.sensor_id = h.sensor_id
+ORDER BY s.approximate_arrival_timestamp DESC
+LIMIT 50;
+```
+
+### 4. Gobernanza RBAC y Observabilidad del Stream
+
+* **Control de Acceso RBAC:** Rol de base de datos `analytics_role` con permisos de solo lectura restringidos exclusivamente a la vista materializada y al esquema de Iceberg:
+  ```sql
+  CREATE ROLE analytics_role;
+  GRANT USAGE ON SCHEMA public TO ROLE analytics_role;
+  GRANT SELECT ON mv_sensor_telemetry_stream TO ROLE analytics_role;
+  GRANT USAGE ON SCHEMA lakehouse_catalog TO ROLE analytics_role;
+  GRANT SELECT ON ALL TABLES IN SCHEMA lakehouse_catalog TO ROLE analytics_role;
+  ```
+* **Métricas de Lag y Latencia:** Auditoría operativa sobre el escaneo de shards y refresco de vistas:
+  ```sql
+  SELECT * FROM SYS_STREAM_SCAN_STATES LIMIT 10;
+  SELECT * FROM SVV_MV_INFO WHERE name = 'mv_sensor_telemetry_stream';
+  ```
+
+---
+
 ## Criterios de Aceptación Cumplidos
 
+### Pre-entregas Anteriores (Lakehouse & Streaming Base)
 * [x] **Infraestructura Declarativa:** Base de datos en AWS Glue (`lakehouse_db`), módulo dedicado `modules/storage/` con versionado en S3 y políticas IAM granulares por prefijo declaradas 100% en Terraform.
 * [x] **Seguridad y Auditoría:** Rol de auditoría refactorizado con confianza de plano de control y políticas restringidas por prefijo.
 * [x] **Consistencia Transaccional:** Integración de `IcebergSink` con catálogo de Glue y commits atómicos sincronizados con los checkpoints de Flink.
 * [x] **Formato Apache Iceberg:** Generación comprobada de archivos Parquet en `data/` y archivos `.metadata.json` / `.avro` en `metadata/`.
 * [x] **Manejo de Concurrencia:** Catálogo de Glue configurado correctamente sin errores de modificación concurrente.
-* [x] **Consultabilidad Analítica:** Tabla validada y consultable exitosamente desde Amazon Athena.
+* [x] **Consultabilidad Analítica Serverless:** Tabla validada y consultable exitosamente desde Amazon Athena.
 * [x] **Outputs de Flink:** Exposición completa de variables de salida en `modules/flink/outputs.tf`.
-* [x] **Validación y CLI:** Documentación del comando `aws kinesis put-record` y pruebas de consulta analítica.
+
+### Pre-entrega 6 (Analítica Avanzada In-Stream con Redshift)
+* [x] **Redshift Streaming Ingestion (RSI) y Materialized View (35%):** Mapeo de Kinesis Data Streams como objeto externo en Redshift y Materialized View funcional con parseo JSON (`sensor_id`, `event_timestamp`, `temperature`, `humidity`, `air_quality_index`), tipado nativo sin errores de casting y protección de Schema Drift mediante `CAN_JSON_PARSE` y tipo `SUPER`.
+* [x] **Integración Lakehouse Iceberg mediante External Schema y JOIN (25%):** Conexión exitosa de Redshift con AWS Glue Data Catalog (`lakehouse_db`) y consulta `JOIN` híbrida unificando el stream en caliente con la tabla histórica Iceberg (`sensor_aggregates`).
+* [x] **Optimización Operativa y Estrategia de Refresco (15%):** Adopción de estrategia de refresco incremental y justificación técnica del *Latency Trade-off* (evitando saturación de CPU y contención de bloqueos por refrescos sub-segundo innecesarios).
+* [x] **Seguridad e Integración IAM entre Servicios (15%):** Autenticación y autorización IAM nativa bajo el principio de mínimo privilegio (`kinesis:DescribeStream`, `kinesis:GetRecords`, Glue, S3) y gobernanza RBAC con el rol `analytics_role`.
+* [x] **Calidad del Entregable Técnico y Evidencias (10%):** Script SQL consolidado y comentado en `scripts/redshift_streaming_ingestion.sql`, documento Markdown [`CheckPoint_Redshift_Bustos_Samuel.md`](CheckPoint_Redshift_Bustos_Samuel.md) listo para exportar a PDF con diagramas, justificaciones de diseño y espacios delimitados para las 4 capturas de pantalla.
+
