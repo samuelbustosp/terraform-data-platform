@@ -80,3 +80,17 @@ output "lakehouse_database_name" {
   description = "Nombre de la base de datos de Glue para el Lakehouse"
   value       = aws_glue_catalog_database.lakehouse_db.name
 }
+
+# ==============================================================================
+# REDSHIFT OUTPUTS
+# ==============================================================================
+
+output "redshift_cluster_endpoint" {
+  description = "Endpoint del cluster de Redshift"
+  value       = module.redshift.cluster_endpoint
+}
+
+output "redshift_role_arn" {
+  description = "ARN del rol IAM asociado a Redshift (usar en scripts SQL)"
+  value       = module.redshift.redshift_role_arn
+}

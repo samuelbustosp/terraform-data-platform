@@ -28,3 +28,9 @@ variable "private_subnet_cidrs" {
   description = "CIDR blocks for private subnets."
   type        = list(string)
 }
+
+variable "redshift_admin_password" {
+  description = "Master password para el cluster de Redshift."
+  type        = string
+  sensitive   = true
+}
