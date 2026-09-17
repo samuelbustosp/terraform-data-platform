@@ -76,7 +76,10 @@ resource "aws_iam_role_policy" "firehouse" {
           "logs:CreateLogGroup",
           "logs:CreateLogStream"
         ]
-        Resource = "*"
+        Resource = [
+          "arn:aws:logs:*:*:log-group:/aws/kinesis-firehose/${var.stream_name}",
+          "arn:aws:logs:*:*:log-group:/aws/kinesis-firehose/${var.stream_name}:*"
+        ]
       }
     ]
   })
