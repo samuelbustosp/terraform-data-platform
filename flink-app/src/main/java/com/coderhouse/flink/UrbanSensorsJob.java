@@ -2,6 +2,7 @@ package com.coderhouse.flink;
 
 import com.amazonaws.services.kinesisanalytics.runtime.KinesisAnalyticsRuntime;
 
+import java.time.Duration;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.connector.kinesis.source.KinesisStreamsSource;
@@ -9,8 +10,11 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
-import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import org.apache.flink.util.Collector;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
@@ -90,25 +94,29 @@ public class UrbanSensorsJob {
         .build();
 
     // =====================================================
-    // 5. Crear DataStream desde Kinesis
+    // 5. Crear DataStream desde Kinesis y asignar Watermarks (Event Time)
     // =====================================================
     DataStream<String> rawEvents = env.fromSource(
         source,
         WatermarkStrategy.noWatermarks(),
         "kinesis-source",
         org.apache.flink.api.common.typeinfo.TypeInformation.of(String.class));
-
-    DataStream<SensorEvent> sensorEvents = rawEvents.map(new SensorEventMapper());
-
+    // Mapeo del JSON crudo a SensorEvent y asignación de Event Time con Watermarks tolerantes a retrasos (10s)
+    DataStream<SensorEvent> sensorEvents = rawEvents
+        .map(new SensorEventMapper())
+        .assignTimestampsAndWatermarks(
+            WatermarkStrategy.<SensorEvent>forBoundedOutOfOrderness(Duration.ofSeconds(10))
+                .withTimestampAssigner((event, recordTimestamp) -> event.getTimestampEpochMillis())
+                .withIdleness(Duration.ofMinutes(1))
+        );
+    
     // =====================================================
-    // 6. KeyBy por sensor y Ventana Tumbling de 1 minuto
+    // 6. KeyBy por sensor y Ventana Tumbling de 1 minuto por EVENT TIME
     // =====================================================
     KeyedStream<SensorEvent, String> keyedEvents = sensorEvents.keyBy(SensorEvent::getSensorId);
-
     DataStream<SensorAggregate> aggregatedEvents = keyedEvents
-        .window(TumblingProcessingTimeWindows.of(Time.minutes(1)))
-        .aggregate(new SensorAggregateFunction());
-
+        .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+        .aggregate(new SensorAggregateFunction(), new SensorWindowProcessFunction());
     aggregatedEvents.print();
 
     // =====================================================
@@ -232,6 +240,23 @@ public class UrbanSensorsJob {
     }
   }
 
+    public static class SensorWindowProcessFunction
+      extends ProcessWindowFunction<SensorAggregate, SensorAggregate, String, TimeWindow> {
+
+    @Override
+    public void process(
+        String key,
+        Context context,
+        Iterable<SensorAggregate> elements,
+        Collector<SensorAggregate> out) {
+
+      SensorAggregate aggregate = elements.iterator().next();
+      // Asignamos la marca de tiempo de fin de ventana de Event Time
+      aggregate.setEventTimeMillis(context.window().getEnd());
+      out.collect(aggregate);
+    }
+  }
+
   public static class ToRowDataMapper implements MapFunction<SensorAggregate, RowData> {
     @Override
     public RowData map(SensorAggregate agg) {
@@ -240,7 +265,7 @@ public class UrbanSensorsJob {
       row.setField(1, agg.getAvgTemperature());
       row.setField(2, agg.getAvgAirQuality());
       row.setField(3, agg.getEventCount());
-      row.setField(4, System.currentTimeMillis());
+      row.setField(4, agg.getEventTimeMillis() > 0 ? agg.getEventTimeMillis() : System.currentTimeMillis());
       return row;
     }
   }

@@ -8,6 +8,7 @@ public class SensorAggregate implements Serializable {
     private double avgTemperature;
     private double avgAirQuality;
     private long eventCount;
+    private long eventTimeMillis;
 
     public SensorAggregate() {
     }
@@ -22,6 +23,20 @@ public class SensorAggregate implements Serializable {
         this.avgTemperature = avgTemperature;
         this.avgAirQuality = avgAirQuality;
         this.eventCount = eventCount;
+    }
+
+    public SensorAggregate(
+            String sensorId,
+            double avgTemperature,
+            double avgAirQuality,
+            long eventCount,
+            long eventTimeMillis) {
+
+        this.sensorId = sensorId;
+        this.avgTemperature = avgTemperature;
+        this.avgAirQuality = avgAirQuality;
+        this.eventCount = eventCount;
+        this.eventTimeMillis = eventTimeMillis;
     }
 
     public String getSensorId() {
@@ -40,6 +55,14 @@ public class SensorAggregate implements Serializable {
         return eventCount;
     }
 
+    public long getEventTimeMillis() {
+        return eventTimeMillis;
+    }
+
+    public void setEventTimeMillis(long eventTimeMillis) {
+        this.eventTimeMillis = eventTimeMillis;
+    }
+
     @Override
     public String toString() {
         return "SensorAggregate{" +
@@ -47,6 +70,7 @@ public class SensorAggregate implements Serializable {
                 ", avgTemperature=" + avgTemperature +
                 ", avgAirQuality=" + avgAirQuality +
                 ", eventCount=" + eventCount +
+                ", eventTimeMillis=" + eventTimeMillis +
                 '}';
     }
 }

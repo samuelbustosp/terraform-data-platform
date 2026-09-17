@@ -134,7 +134,10 @@ resource "aws_iam_role_policy" "flink_cloudwatch" {
           "logs:PutLogEvents"
         ]
 
-        Resource = "*"
+        Resource = [
+          aws_cloudwatch_log_group.flink.arn,
+          "${aws_cloudwatch_log_group.flink.arn}:*"
+        ]
       }
     ]
   })

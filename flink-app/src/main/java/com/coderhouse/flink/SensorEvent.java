@@ -93,4 +93,26 @@ public class SensorEvent implements Serializable {
         ", timestamp='" + timestamp + '\'' +
         '}';
   }
+
+  public long getTimestampEpochMillis() {
+    if (timestamp == null || timestamp.trim().isEmpty()) {
+      return System.currentTimeMillis();
+    }
+    try {
+      java.time.format.DateTimeFormatter formatter = 
+          java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+      java.time.LocalDateTime ldt = java.time.LocalDateTime.parse(timestamp.trim(), formatter);
+      return ldt.toInstant(java.time.ZoneOffset.UTC).toEpochMilli();
+    } catch (Exception e) {
+      try {
+        return java.time.Instant.parse(timestamp.trim()).toEpochMilli();
+      } catch (Exception e2) {
+        try {
+          return Long.parseLong(timestamp.trim());
+        } catch (Exception e3) {
+          return System.currentTimeMillis();
+        }
+      }
+    }
+  }
 }

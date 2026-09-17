@@ -61,7 +61,7 @@ def send_to_kinesis(event: dict) -> None:
   )
 
   print(
-    f"📡 Evento enviado a Kinesis: {event} | "
+    f">>> [KINESIS] Evento enviado: {event} | "
     f"Shard: {response['ShardId']}"
   )
 
