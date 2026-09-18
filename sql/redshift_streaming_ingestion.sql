@@ -15,7 +15,7 @@
 -- 1.1 Crear esquema externo apuntando al stream de Kinesis
 CREATE EXTERNAL SCHEMA IF NOT EXISTS kinesis_stream_schema
 FROM KINESIS
-IAM_ROLE 'arn:aws:iam::985879611495:role/pre-entrega1-dev-redshift-role';
+IAM_ROLE 'arn:aws:iam::<TU_ACCOUNT_ID>:role/pre-entrega1-dev-redshift-role';
 
 -- 1.2 Crear Materialized View en tiempo real
 -- Maneja Schema Drift con CAN_JSON_PARSE y almacena el payload en tipo SUPER
@@ -62,7 +62,7 @@ LIMIT 10;
 CREATE EXTERNAL SCHEMA IF NOT EXISTS lakehouse_catalog
 FROM DATA CATALOG
 DATABASE 'lakehouse_db'
-IAM_ROLE 'arn:aws:iam::985879611495:role/pre-entrega1-dev-redshift-role'
+IAM_ROLE 'arn:aws:iam::<TU_ACCOUNT_ID>:role/pre-entrega1-dev-redshift-role'
 REGION 'us-east-1';
 
 -- 2.2 VALIDACIÓN 2 (Pedida por el profesor):
